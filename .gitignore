@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+
+# Entornos y secretos
+.env
+*.env
+.env.*
+.venv/
+.uv/
+.venv*/
+
+# Logs y artefactos locales
+etl.log*
+data/raw/
+data/staging/
+data/artifacts/
+state*.json
+
+# OS/IDE
+.DS_Store
+.vscode/
+.idea/

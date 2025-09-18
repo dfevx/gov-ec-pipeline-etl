@@ -1,0 +1,177 @@
+# =============================================================================
+# Config de Transform para 'detenidos_aprehendidos' (canónico 2025, fail-fast)
+# =============================================================================
+dataset: detenidos_aprehendidos
+
+# Transform: modo estricto (solo tolera padding; no tolera drift salvo columnas extra reportadas)
+allowed_schema_diffs: 0
+
+schema:
+  pad_missing: true            # crea columnas esperadas ausentes con NaN (p.ej., lat/long en históricos)
+
+promote_policy:
+  on_critical_fail: error
+  fail_on_missing_expected: true   # tras el padding, si igual falta algo crítico → error
+  fail_on_extra_columns: false     # NO falla por columnas nuevas (solo reporta/loguea)
+  fail_on_schema_drift: false
+
+normalize:
+  na_values: ["", "NA", "N/A", "na", "null", "None", "none", "Nan", "NaN"]
+  drop_all_null_rows: true
+  drop_all_null_cols: false
+
+# Si necesitas renombres explícitos (pre->post), decláralos aquí.
+rename: {}
+
+# Tipificación por grupos (Transform aplicará casteos defensivos)
+types:
+  datetime: [fecha_detencion_aprehension]
+  numeric:  [edad, latitud, longitud, ano]
+  category:
+    - tipo
+    - estado_civil
+    - estatus_migratorio
+    - sexo
+    - genero
+    - nacionalidad
+    - autoidentificacion_etnica
+    - nivel_de_instruccion
+    - condicion
+    - movilizacion
+    - tipo_arma
+    - arma
+    - lugar
+    - tipo_lugar
+    - nombre_zona
+    - nombre_subzona
+    - nombre_distrito
+    - nombre_circuito
+    - nombre_subcircuito
+    - nombre_provincia
+    - nombre_canton
+    - nombre_parroquia
+    - presunta_infraccion
+    - grupo_edad
+  string_codes:
+    - codigo_iccs
+    - codigo_distrito
+    - codigo_circuito
+    - codigo_subcircuito
+    - codigo_provincia
+    - codigo_canton
+    - codigo_parroquia
+    - hora_detencion_aprehension
+
+# Orden canónico (2025+). NOTA: los IDs (business_key/surrogate_id) se anteponen automáticamente si existen;
+# no hace falta listarlos aquí para Transform.
+order:
+  - codigo_iccs
+  - fecha_detencion_aprehension
+  - hora_detencion_aprehension
+  - tipo
+  - presunta_infraccion
+  - estado_civil
+  - estatus_migratorio
+  - edad
+  - sexo
+  - genero
+  - nacionalidad
+  - autoidentificacion_etnica
+  - nivel_de_instruccion
+  - condicion
+  - movilizacion
+  - tipo_arma
+  - arma
+  - lugar
+  - tipo_lugar
+  - nombre_zona
+  - nombre_subzona
+  - codigo_distrito
+  - codigo_circuito
+  - codigo_subcircuito
+  - codigo_provincia
+  - codigo_canton
+  - codigo_parroquia
+  - nombre_distrito
+  - nombre_circuito
+  - nombre_subcircuito
+  - nombre_provincia
+  - nombre_canton
+  - nombre_parroquia
+  - latitud
+  - longitud
+  - grupo_edad
+  - ano
+
+# Reglas críticas mínimas (fail-fast si faltan por completo tras padding)
+critical:
+  all:    [fecha_detencion_aprehension, presunta_infraccion]
+  any_of:
+    - [codigo_provincia, codigo_canton, codigo_parroquia]
+    - [nombre_provincia, nombre_canton, nombre_parroquia]
+
+# Columnas sugeridas (no bloquean)
+recommended:
+  - [latitud, longitud]
+
+# Reglas categóricas (ejemplo mínimo)
+categories:
+  sexo:
+    map:
+      "m": "Masculino"
+      "masculino": "Masculino"
+      "f": "Femenino"
+      "femenino": "Femenino"
+    allowed: ["Masculino", "Femenino"]
+    coerce_to: null
+
+# Reglas numéricas (coerciona fuera de rango a NaN)
+numeric_rules:
+  edad:
+    min: 0
+    max: 120
+  latitud:
+    min: -5.5
+    max:  2.5
+  longitud:
+    min: -92.5
+    max: -74.5
+
+# Estrategia de IDs — genera business_key (compuesto) y surrogate_id (uuid5) automáticamente
+id_strategy:
+  mode: composite_first
+  single_key: [codigo_iccs]
+  composite_key: [codigo_iccs, fecha_detencion_aprehension, codigo_provincia, codigo_canton]
+  composite_allow_nulls: true
+  surrogate:
+    enabled: true
+    method: uuid5
+    namespace: "https://tu-org.ec/mdi/detenidos_aprehendidos"
+    fields: [codigo_iccs, fecha_detencion_aprehension, codigo_provincia, codigo_canton]
+
+integrity:
+  enforce_unique_business_key: true
+  on_duplicate: keep_latest_by_fecha
+
+# Derivaciones
+derive:
+  # Si la fuente no trae 'ano', derivarlo desde 'fecha_detencion_aprehension'
+  ano_from_fecha: true
+
+# =============================================================================
+# Bloque de carga (Load) — alineado con la tabla original (43 columnas)
+# =============================================================================
+load:
+  table: detenidos_aprehendidos
+  upsert_key: surrogate_id
+  batch_size: 1000
+  max_retries: 3
+  retry_backoff_seconds: [2, 5, 10]
+
+  # Columna JSONB “de bolsillo” en la tabla destino (en plural)
+  extras_json_column: extras
+
+  # Para que el loader también acolchone si faltan columnas de la tabla (p.ej. extras/inserted_at/updated_at)
+  schema:
+    pad_missing: true
+    fail_on_extra_columns: false
